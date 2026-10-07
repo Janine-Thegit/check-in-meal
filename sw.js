@@ -1,4 +1,4 @@
-const CACHE = 'meal-checkin-v5'; // bump on every deploy
+const CACHE = 'meal-checkin-v6'; // bump on every deploy
 const FILES = ['index.html', 'app.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon-32.png'];
 
 self.addEventListener('install', e => {

@@ -17,7 +17,7 @@
 <style>
 :root{
   --ink:#18140F; --paper:#EFE7DA; --card:#F7F1E6; --line:#D6CABA; --mute:#6E655A;
-  --green:#6B8F5E; --amber:#D9A441; --red:#B5503F; --grey:#A39B8F;
+  --green:#6B8F5E; --amber:#D9A441; --red:#B5503F; --grey:#A39B8F; --water:#5B7C99;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.45}
@@ -72,6 +72,24 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 .quiet{color:var(--mute);margin:18px 0}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.on{opacity:1}
+.ghost{display:block;width:100%;margin-top:12px;padding:14px;border:1.5px solid var(--ink);border-radius:999px;background:transparent;color:var(--ink);font:inherit;font-weight:500;cursor:pointer}
+.go + .ghost{margin-top:26px}
+.wread{font-family:'Fraunces',serif;font-size:64px;text-align:center;margin:26px 0 14px;line-height:1}
+.wrange{-webkit-appearance:none;appearance:none;display:block;width:100%;height:14px;border-radius:999px;background:var(--line);outline:none;margin:22px 0 10px;touch-action:pan-y}
+.wrange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:36px;height:36px;margin-top:-11px;border-radius:50%;background:var(--ink);border:4px solid var(--paper);box-shadow:0 0 0 1.5px var(--ink)}
+.wrange::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:var(--ink);border:4px solid var(--paper);box-shadow:0 0 0 1.5px var(--ink)}
+.wrange::-moz-range-track{background:transparent;height:14px}
+.wticks{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);padding:0 4px}
+.wbar{height:8px;border-radius:999px;background:var(--line);margin-top:2px;overflow:hidden}
+.wbar span{display:block;height:100%;background:var(--water)}
+.wchange{margin-top:12px}
+.hrow{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:10px;font:inherit;color:var(--ink);cursor:pointer}
+.hd{display:block;font-family:'Fraunces',serif;font-size:17px}
+.hs{display:block;font-size:13px;color:var(--mute)}
+.hr{display:flex;align-items:center;gap:10px;flex:none}
+.hp{font-family:'Fraunces',serif;font-size:22px}
+.hc{width:16px;height:16px;border-radius:50%;display:inline-block}
+.hc.g{background:var(--green)}.hc.a{background:var(--amber)}.hc.r{background:var(--red)}.hc.n{background:var(--grey)}
 </style>
 </head>
 <body>
@@ -84,14 +102,17 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 <section id="s1">
   <h2>Which meal?</h2>
   <div class="chips" id="mealChips"></div>
-  <h2>Where?</h2>
-  <div class="chips" id="locChips"></div>
-  <div class="addrow hidden" id="addRow">
-    <input id="addInput" maxlength="30" placeholder="New place" autocomplete="off">
-    <button class="link" id="addOk">Add</button>
+  <div id="whereBox">
+    <h2>Where?</h2>
+    <div class="chips" id="locChips"></div>
+    <div class="addrow hidden" id="addRow">
+      <input id="addInput" maxlength="30" placeholder="New place" autocomplete="off">
+      <button class="link" id="addOk">Add</button>
+    </div>
   </div>
   <button class="go" id="go1" disabled aria-label="Continue">&rsaquo;</button>
-  <p class="quiet hidden" id="toDayWrap"><button class="link" id="toDay">Today's meals</button></p>
+  <button class="ghost hidden" id="toDay">Today's meals</button>
+  <button class="ghost" id="toHist">Previous days</button>
 </section>
 
 <section id="s2" class="hidden">
@@ -107,13 +128,32 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 </section>
 
 <section id="s3" class="hidden">
+  <button class="back hidden" id="back3">&lsaquo; Previous days</button>
   <div class="head">
-    <h2 style="margin:4px 0">Today's meals</h2>
+    <h2 style="margin:4px 0" id="dayTitle">Today's meals</h2>
     <button class="link" id="copy">Copy as text</button>
   </div>
   <div id="summary"></div>
   <div id="list"></div>
   <button class="save" id="again">Add a meal</button>
+  <button class="save hidden" id="backToday">Back to today</button>
+  <button class="ghost" id="toHist2">Previous days</button>
+</section>
+
+<section id="s4" class="hidden">
+  <button class="back" id="back4">&lsaquo; Back</button>
+  <h2 style="margin:4px 0">Previous days</h2>
+  <div id="hist"></div>
+</section>
+
+<section id="s5" class="hidden">
+  <button class="back" id="back5">&lsaquo; Back</button>
+  <p class="ctx" id="wctx">Water</p>
+  <div class="wread" id="wRead">0 L</div>
+  <input type="range" class="wrange" id="wRange" min="0" max="5" step="0.25" value="0" aria-label="Litres of water">
+  <div class="wticks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5 L</span></div>
+  <p class="quiet">Set the total for the day so far. Saving again replaces it.</p>
+  <button class="save" id="wSave">Save</button>
 </section>
 
 </main>
@@ -191,9 +231,10 @@ function mealColour(e){
 }
 const mealPoints = e => POINTS[kind(e)][mealColour(e)];
 function dayColour(total){ return total <= DAY_GREEN_MAX ? 'g' : total <= DAY_AMBER_MAX ? 'a' : 'r'; }
-const MEALS = ['Breakfast','Lunch','Dinner','Snack'];
+const MEALS = ['Breakfast','Lunch','Dinner','Snack','Water'];
+const WATER_MAX = 5, WATER_STEP = 0.25;   // litres: slider range and step
 const LOC_DEFAULTS = ['Home','Restaurant','Friends','Family','Work','On the go'];
-const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations';
+const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations', KEY_W='mealCheckin.water';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -206,20 +247,42 @@ const makeId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1800); }
 
 let entries = load(KEY_E, []);
+let water = load(KEY_W, {});            // one running total per day: {'2026-10-07': 2.5}
+if(!water || typeof water!=='object' || Array.isArray(water)) water = {};
 let locs = load(KEY_L, LOC_DEFAULTS.slice());
 let st = {meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};
-let confirmId = null;
+let confirmId = null, confirmWater = false;
+let viewDate = localDate(), waterDate = localDate(), waterFrom = 'front';
+
+/* ---------- day data ---------- */
+const isToday = d => d === localDate();
+const foodOn = d => entries.filter(e => e.date === d).sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
+const litresOn = d => (typeof water[d]==='number' && water[d]>0) ? water[d] : 0;
+const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0;
+const fmtL = n => n.toLocaleString(undefined,{maximumFractionDigits:2}) + ' L';
+const plural = (n,w) => `${n} ${w}${n===1?'':'s'}`;
+function parseDay(d){ const [y,m,dd]=d.split('-').map(Number); return new Date(y,m-1,dd); }
+const dayLabel = (d,long) => parseDay(d).toLocaleDateString(undefined, long
+  ? {weekday:'long',day:'numeric',month:'long',year:'numeric'}
+  : {weekday:'short',day:'numeric',month:'short'});
+function dayStats(d){
+  const list = foodOn(d);
+  const total = list.reduce((n,e)=>n+mealPoints(e),0);
+  const meals = list.filter(e=>e.meal!=='Snack').length;
+  return {list, total, meals, snacks:list.length-meals, colour:list.length?dayColour(total):'n', litres:litresOn(d)};
+}
 
 /* ---------- screens ---------- */
-function show(id){ ['s1','s2','s3'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
-const todays = () => entries.filter(e => e.date === localDate());
+function show(id){ ['s1','s2','s3','s4','s5'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
 
 function renderS1(){
+  const isWater = st.meal==='Water';
   $('#mealChips').innerHTML = MEALS.map(m => `<button class="chip${st.meal===m?' sel':''}" data-m="${esc(m)}">${esc(m)}</button>`).join('');
   $('#locChips').innerHTML = locs.map(l => `<button class="chip${st.loc===l?' sel':''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')
     + `<button class="chip add" id="addChip">+ Add</button>`;
-  $('#go1').disabled = !(st.meal && st.loc);
-  $('#toDayWrap').classList.toggle('hidden', todays().length === 0);
+  $('#whereBox').classList.toggle('hidden', isWater);
+  $('#go1').disabled = !(st.meal && (isWater || st.loc));
+  $('#toDay').classList.toggle('hidden', !hasAnyOn(localDate()));
 }
 function renderGroup(box, key){
   const set = RULES[st.meal==='Snack'?'snack':'meal'][key];
@@ -239,21 +302,33 @@ function dotsHtml(e){
   const d = (lab,c) => `<span><i class="${c}"></i>${lab}</span>`;
   return `<div class="dots">${d('Portion',e.portion)}${d('Protein',e.protein)}${d('Carbs',e.carb)}${d('Fat',e.fat)}</div>`;
 }
-function summaryHtml(list){
-  if(!list.length) return '';
-  const total = list.reduce((n,e)=>n+mealPoints(e),0);
-  const c = dayColour(total);
-  const word = {g:'Green day', a:'Amber day', r:'Red day'}[c];
-  const meals = list.filter(e=>e.meal!=='Snack').length, snacks = list.length - meals;
-  const left = DAY_GREEN_MAX - total;
+function summaryHtml(s){
+  if(!s.list.length) return '';
+  const word = {g:'Green day', a:'Amber day', r:'Red day'}[s.colour];
+  const left = DAY_GREEN_MAX - s.total;
   const sub = left >= 0 ? `${left} left before amber` : `${-left} over the green line`;
-  return `<div class="sum ${c}"><div class="pts">${total}</div>
-    <div><div class="lbl">${word}</div><div class="sub2">${meals} meal${meals===1?'':'s'}, ${snacks} snack${snacks===1?'':'s'} · ${sub}</div></div></div>`;
+  return `<div class="sum ${s.colour}"><div class="pts">${s.total}</div>
+    <div><div class="lbl">${word}</div><div class="sub2">${plural(s.meals,'meal')}, ${plural(s.snacks,'snack')} · ${sub}</div></div></div>`;
+}
+function waterCardHtml(d){
+  const l = litresOn(d); if(!l) return '';
+  const pct = Math.min(100, l/WATER_MAX*100);
+  return `<div class="entry"><div class="top">Water</div>
+    <div class="mn">${esc(fmtL(l))}</div>
+    <div class="wbar"><span style="width:${pct}%"></span></div>
+    <button class="link wchange" data-wchange="1">Change</button>
+    <button class="x" data-wdel="1" aria-label="Delete water entry">&times;</button>
+    ${confirmWater ? `<div class="confirm">Delete the water entry? <button data-wcancel="1">Cancel</button><button data-wyes="1">Delete</button></div>` : ''}
+  </div>`;
 }
 function renderS3(){
-  const list = todays().sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
-  $('#summary').innerHTML = summaryHtml(list);
-  $('#list').innerHTML = list.length ? list.map(e => {
+  const d = viewDate, today = isToday(d), s = dayStats(d);
+  $('#dayTitle').textContent = today ? "Today's meals" : dayLabel(d, true);
+  $('#back3').classList.toggle('hidden', today);
+  $('#again').classList.toggle('hidden', !today);
+  $('#backToday').classList.toggle('hidden', today);
+  $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d);
+  $('#list').innerHTML = s.list.length ? s.list.map(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     return `<div class="entry">
       <div class="top">${esc(t)} · ${esc(e.location)}</div>
@@ -262,9 +337,49 @@ function renderS3(){
       <button class="x" data-del="${e.id}" aria-label="Delete entry">&times;</button>
       ${confirmId===e.id ? `<div class="confirm">Delete this entry? <button data-cancel="1">Cancel</button><button data-yes="${e.id}">Delete</button></div>` : ''}
     </div>`;
-  }).join('') : `<p class="quiet">Nothing logged yet today.</p>`;
+  }).join('') : (s.litres ? '' : `<p class="quiet">Nothing logged ${today ? 'yet today' : 'on this day'}.</p>`);
+}
+function renderS4(){
+  const days = new Set(entries.map(e => e.date));
+  Object.keys(water).forEach(k => { if(litresOn(k)) days.add(k); });
+  const sorted = [...days].sort().reverse();
+  $('#hist').innerHTML = sorted.length ? sorted.map(d => {
+    const s = dayStats(d);
+    const bits = [];
+    if(s.list.length) bits.push(`${plural(s.meals,'meal')}, ${plural(s.snacks,'snack')}`);
+    if(s.litres) bits.push(fmtL(s.litres) + ' water');
+    return `<button class="hrow" data-day="${d}">
+      <span><span class="hd">${esc(dayLabel(d))}${isToday(d)?' · today':''}</span><span class="hs">${esc(bits.join(' · '))}</span></span>
+      <span class="hr"><span class="hp">${s.list.length ? s.total : '–'}</span><i class="hc ${s.colour}"></i></span>
+    </button>`;
+  }).join('') : `<p class="quiet">Nothing logged yet.</p>`;
 }
 function resetFlow(){ st = {meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
+function goToday(){
+  viewDate = localDate(); confirmId = null; confirmWater = false;
+  if(hasAnyOn(viewDate)){ renderS3(); show('s3'); } else { resetFlow(); renderS1(); show('s1'); }
+}
+
+/* ---------- water ---------- */
+function updWater(){
+  const r = $('#wRange'), v = parseFloat(r.value) || 0, pct = v/WATER_MAX*100;
+  $('#wRead').textContent = fmtL(v);
+  r.style.background = `linear-gradient(to right, var(--water) ${pct}%, var(--line) ${pct}%)`;
+}
+function openWater(d, from){
+  waterDate = d; waterFrom = from;
+  const r = $('#wRange'); r.min = 0; r.max = WATER_MAX; r.step = WATER_STEP; r.value = litresOn(d);
+  $('#wctx').textContent = isToday(d) ? 'Water today' : 'Water · ' + dayLabel(d);
+  updWater(); show('s5');
+}
+function saveWater(){
+  const v = parseFloat($('#wRange').value) || 0;
+  if(v > 0) water[waterDate] = v; else delete water[waterDate];
+  store(KEY_W, water);
+  resetFlow(); viewDate = waterDate; confirmWater = false; confirmId = null;
+  renderS3(); show('s3');
+}
+$('#wRange').addEventListener('input', updWater);
 
 /* ---------- events ---------- */
 document.addEventListener('click', ev => {
@@ -273,15 +388,29 @@ document.addEventListener('click', ev => {
   else if(b.dataset.l){ st.loc = b.dataset.l; renderS1(); }
   else if(b.id==='addChip'){ $('#addRow').classList.remove('hidden'); $('#addInput').focus(); }
   else if(b.id==='addOk'){ addLoc(); }
-  else if(b.id==='go1'){ st.portion=st.protein=st.carb=st.fat=null; renderS2(); show('s2'); }
+  else if(b.id==='go1'){
+    if(st.meal==='Water'){ openWater(localDate(), 'front'); }
+    else { st.portion=st.protein=st.carb=st.fat=null; renderS2(); show('s2'); }
+  }
   else if(b.id==='back2'){ renderS1(); show('s1'); }
   else if(b.dataset.k){ st[b.dataset.k] = b.dataset.c; renderS2(); }
   else if(b.id==='save'){ saveEntry(); }
-  else if(b.id==='toDay'){ renderS3(); show('s3'); }
+  else if(b.id==='toDay'){ goToday(); }
   else if(b.id==='again'){ resetFlow(); $('#addRow').classList.add('hidden'); renderS1(); show('s1'); }
+  else if(b.id==='toHist' || b.id==='toHist2'){ renderS4(); show('s4'); }
+  else if(b.id==='back3'){ renderS4(); show('s4'); }
+  else if(b.id==='back4'){ renderS1(); show('s1'); }
+  else if(b.id==='backToday'){ goToday(); }
+  else if(b.dataset.day){ viewDate = b.dataset.day; confirmId = null; confirmWater = false; renderS3(); show('s3'); }
   else if(b.dataset.del){ confirmId = b.dataset.del; renderS3(); }
   else if(b.dataset.cancel){ confirmId = null; renderS3(); }
   else if(b.dataset.yes){ entries = entries.filter(e => e.id !== b.dataset.yes); store(KEY_E, entries); confirmId = null; renderS3(); }
+  else if(b.id==='wSave'){ saveWater(); }
+  else if(b.id==='back5'){ if(waterFrom==='card'){ renderS3(); show('s3'); } else { renderS1(); show('s1'); } }
+  else if(b.dataset.wchange){ openWater(viewDate, 'card'); }
+  else if(b.dataset.wdel){ confirmWater = true; renderS3(); }
+  else if(b.dataset.wcancel){ confirmWater = false; renderS3(); }
+  else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = false; renderS3(); }
   else if(b.id==='copy'){ copyText(); }
 });
 $('#addInput').addEventListener('keydown', e => { if(e.key==='Enter') addLoc(); });
@@ -296,13 +425,13 @@ function saveEntry(){
   entries.push({id:makeId(), date:localDate(now), timestamp:now.toISOString(),
     meal:st.meal, location:st.loc, portion:st.portion, protein:st.protein, carb:st.carb, fat:st.fat});
   store(KEY_E, entries);
-  resetFlow(); renderS3(); show('s3');
+  resetFlow(); viewDate = localDate(); confirmId = null; confirmWater = false;
+  renderS3(); show('s3');
 }
 function copyText(){
-  const list = todays().sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
-  const head = new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const lines = [head, ''];
-  list.forEach(e => {
+  const s = dayStats(viewDate);
+  const lines = [dayLabel(viewDate, true), ''];
+  s.list.forEach(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     const set = RULES[e.meal==='Snack'?'snack':'meal'];
     lines.push(`${t} ${e.meal} (${e.location}): ${TL[mealColour(e)]}, ${mealPoints(e)} pt${mealPoints(e)===1?'':'s'}`);
@@ -312,8 +441,8 @@ function copyText(){
     lines.push(`  Fat: ${TL[e.fat]} (${set.fat[e.fat][0]})`);
     lines.push('');
   });
-  const total = list.reduce((n,e)=>n+mealPoints(e),0);
-  lines.push(`Day total: ${total} points, ${ {g:'green',a:'amber',r:'red'}[dayColour(total)] } day`);
+  if(s.list.length) lines.push(`Day total: ${s.total} points, ${ {g:'green',a:'amber',r:'red'}[s.colour] } day`);
+  if(s.litres) lines.push(`Water: ${fmtL(s.litres)}`);
   const text = lines.join('\n').trim();
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
     .then(()=>toast('Copied'), ()=>{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');toast('Copied');}catch(e){} ta.remove(); });
@@ -322,7 +451,7 @@ function copyText(){
 /* ---------- start ---------- */
 $('#today').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
 renderS1();
-if(todays().length){ renderS3(); show('s3'); } else { show('s1'); }
+goToday();
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 </body>
