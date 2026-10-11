@@ -90,6 +90,8 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 .hp{font-family:'Fraunces',serif;font-size:22px}
 .hc{width:16px;height:16px;border-radius:50%;display:inline-block}
 .hc.g{background:var(--green)}.hc.a{background:var(--amber)}.hc.r{background:var(--red)}.hc.n{background:var(--grey)}
+.chip.cal{position:relative;overflow:hidden;display:inline-block}
+.chip.cal input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;font-size:16px}
 </style>
 </head>
 <body>
@@ -100,6 +102,8 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 <main>
 
 <section id="s1">
+  <h2>Which day?</h2>
+  <div class="chips" id="dayChips"></div>
   <h2>Which meal?</h2>
   <div class="chips" id="mealChips"></div>
   <div id="whereBox">
@@ -136,7 +140,7 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
   <div id="summary"></div>
   <div id="list"></div>
   <button class="save" id="again">Add a meal</button>
-  <button class="save hidden" id="backToday">Back to today</button>
+  <button class="ghost hidden" id="backToday">Back to today</button>
   <button class="ghost" id="toHist2">Previous days</button>
 </section>
 
@@ -250,18 +254,26 @@ let entries = load(KEY_E, []);
 let water = load(KEY_W, {});            // one running total per day: {'2026-10-07': 2.5}
 if(!water || typeof water!=='object' || Array.isArray(water)) water = {};
 let locs = load(KEY_L, LOC_DEFAULTS.slice());
-let st = {meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};
+let st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};   // date null = today
 let confirmId = null, confirmWater = false;
 let viewDate = localDate(), waterDate = localDate(), waterFrom = 'front';
 
 /* ---------- day data ---------- */
 const isToday = d => d === localDate();
-const foodOn = d => entries.filter(e => e.date === d).sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
+// Entries added after the day carry late:true. Their real clock time is meaningless for that day,
+// so they sort by a nominal slot for their meal and the screen shows "Added later" instead of a time.
+const NOMINAL_HOUR = {Breakfast:8, Lunch:12, Snack:16, Dinner:19};
+function sortKey(e){
+  if(e.late){ const [y,m,d] = e.date.split('-').map(Number); return new Date(y, m-1, d, NOMINAL_HOUR[e.meal] ?? 12).getTime(); }
+  return Date.parse(e.timestamp);
+}
+const foodOn = d => entries.filter(e => e.date === d).sort((a,b)=>sortKey(a)-sortKey(b));
 const litresOn = d => (typeof water[d]==='number' && water[d]>0) ? water[d] : 0;
 const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0;
 const fmtL = n => n.toLocaleString(undefined,{maximumFractionDigits:2}) + ' L';
 const plural = (n,w) => `${n} ${w}${n===1?'':'s'}`;
 function parseDay(d){ const [y,m,dd]=d.split('-').map(Number); return new Date(y,m-1,dd); }
+function addDays(d,n){ const x = parseDay(d); x.setDate(x.getDate()+n); return localDate(x); }
 const dayLabel = (d,long) => parseDay(d).toLocaleDateString(undefined, long
   ? {weekday:'long',day:'numeric',month:'long',year:'numeric'}
   : {weekday:'short',day:'numeric',month:'short'});
@@ -275,7 +287,16 @@ function dayStats(d){
 /* ---------- screens ---------- */
 function show(id){ ['s1','s2','s3','s4','s5'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
 
+function renderDayChips(){
+  const t = localDate(), y = addDays(t,-1), d = st.date, other = d && d!==t && d!==y;
+  $('#dayChips').innerHTML =
+    `<button class="chip${!d||d===t?' sel':''}" data-dset="today">Today</button>` +
+    `<button class="chip${d===y?' sel':''}" data-dset="yest">Yesterday</button>` +
+    `<label class="chip cal${other?' sel':''}"><span>${other ? esc(dayLabel(d)) : 'Pick a date'}</span>` +
+    `<input type="date" id="dayPick" max="${t}" value="${other?d:''}" aria-label="Pick a date"></label>`;
+}
 function renderS1(){
+  renderDayChips();
   const isWater = st.meal==='Water';
   $('#mealChips').innerHTML = MEALS.map(m => `<button class="chip${st.meal===m?' sel':''}" data-m="${esc(m)}">${esc(m)}</button>`).join('');
   $('#locChips').innerHTML = locs.map(l => `<button class="chip${st.loc===l?' sel':''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')
@@ -293,7 +314,7 @@ function renderGroup(box, key){
      </button>`).join('');
 }
 function renderS2(){
-  $('#ctx').textContent = st.meal + ' · ' + st.loc;
+  $('#ctx').textContent = st.meal + ' · ' + st.loc + (st.date ? ' · ' + dayLabel(st.date) : '');
   renderGroup('portionBox','portion'); renderGroup('proteinBox','protein');
   renderGroup('carbBox','carb'); renderGroup('fatBox','fat');
   $('#save').disabled = !(st.portion && st.protein && st.carb && st.fat);
@@ -325,13 +346,12 @@ function renderS3(){
   const d = viewDate, today = isToday(d), s = dayStats(d);
   $('#dayTitle').textContent = today ? "Today's meals" : dayLabel(d, true);
   $('#back3').classList.toggle('hidden', today);
-  $('#again').classList.toggle('hidden', !today);
   $('#backToday').classList.toggle('hidden', today);
   $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d);
   $('#list').innerHTML = s.list.length ? s.list.map(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     return `<div class="entry">
-      <div class="top">${esc(t)} · ${esc(e.location)}</div>
+      <div class="top">${e.late ? 'Added later' : esc(t)} · ${esc(e.location)}</div>
       <div class="mn">${esc(e.meal)}<span class="badge"><i class="${mealColour(e)}"></i>${mealPoints(e)} pt${mealPoints(e)===1?'':'s'}</span></div>
       ${dotsHtml(e)}
       <button class="x" data-del="${e.id}" aria-label="Delete entry">&times;</button>
@@ -354,7 +374,7 @@ function renderS4(){
     </button>`;
   }).join('') : `<p class="quiet">Nothing logged yet.</p>`;
 }
-function resetFlow(){ st = {meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
+function resetFlow(){ st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
 function goToday(){
   viewDate = localDate(); confirmId = null; confirmWater = false;
   if(hasAnyOn(viewDate)){ renderS3(); show('s3'); } else { resetFlow(); renderS1(); show('s1'); }
@@ -383,20 +403,22 @@ $('#wRange').addEventListener('input', updWater);
 
 /* ---------- events ---------- */
 document.addEventListener('click', ev => {
+  if(ev.target.id==='dayPick'){ try{ ev.target.showPicker(); }catch(e){} return; }
   const b = ev.target.closest('button'); if(!b) return;
-  if(b.dataset.m){ st.meal = b.dataset.m; renderS1(); }
+  if(b.dataset.dset){ st.date = b.dataset.dset==='yest' ? addDays(localDate(),-1) : null; renderS1(); }
+  else if(b.dataset.m){ st.meal = b.dataset.m; renderS1(); }
   else if(b.dataset.l){ st.loc = b.dataset.l; renderS1(); }
   else if(b.id==='addChip'){ $('#addRow').classList.remove('hidden'); $('#addInput').focus(); }
   else if(b.id==='addOk'){ addLoc(); }
   else if(b.id==='go1'){
-    if(st.meal==='Water'){ openWater(localDate(), 'front'); }
+    if(st.meal==='Water'){ openWater(st.date || localDate(), 'front'); }
     else { st.portion=st.protein=st.carb=st.fat=null; renderS2(); show('s2'); }
   }
   else if(b.id==='back2'){ renderS1(); show('s1'); }
   else if(b.dataset.k){ st[b.dataset.k] = b.dataset.c; renderS2(); }
   else if(b.id==='save'){ saveEntry(); }
   else if(b.id==='toDay'){ goToday(); }
-  else if(b.id==='again'){ resetFlow(); $('#addRow').classList.add('hidden'); renderS1(); show('s1'); }
+  else if(b.id==='again'){ resetFlow(); st.date = isToday(viewDate) ? null : viewDate; $('#addRow').classList.add('hidden'); renderS1(); show('s1'); }
   else if(b.id==='toHist' || b.id==='toHist2'){ renderS4(); show('s4'); }
   else if(b.id==='back3'){ renderS4(); show('s4'); }
   else if(b.id==='back4'){ renderS1(); show('s1'); }
@@ -413,6 +435,12 @@ document.addEventListener('click', ev => {
   else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = false; renderS3(); }
   else if(b.id==='copy'){ copyText(); }
 });
+document.addEventListener('change', ev => {
+  if(ev.target.id !== 'dayPick') return;
+  const v = ev.target.value;
+  if(v && v <= localDate()) st.date = (v === localDate()) ? null : v;
+  renderS1();
+});
 $('#addInput').addEventListener('keydown', e => { if(e.key==='Enter') addLoc(); });
 function addLoc(){
   const v = $('#addInput').value.trim(); if(!v) return;
@@ -421,11 +449,11 @@ function addLoc(){
   st.loc = hit || v; $('#addInput').value=''; $('#addRow').classList.add('hidden'); renderS1();
 }
 function saveEntry(){
-  const now = new Date();
-  entries.push({id:makeId(), date:localDate(now), timestamp:now.toISOString(),
+  const now = new Date(), date = st.date || localDate(now);
+  entries.push({id:makeId(), date, timestamp:now.toISOString(), late: date !== localDate(now),
     meal:st.meal, location:st.loc, portion:st.portion, protein:st.protein, carb:st.carb, fat:st.fat});
   store(KEY_E, entries);
-  resetFlow(); viewDate = localDate(); confirmId = null; confirmWater = false;
+  resetFlow(); viewDate = date; confirmId = null; confirmWater = false;
   renderS3(); show('s3');
 }
 function copyText(){
@@ -434,7 +462,7 @@ function copyText(){
   s.list.forEach(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     const set = RULES[e.meal==='Snack'?'snack':'meal'];
-    lines.push(`${t} ${e.meal} (${e.location}): ${TL[mealColour(e)]}, ${mealPoints(e)} pt${mealPoints(e)===1?'':'s'}`);
+    lines.push(`${e.late ? 'Added later' : t} ${e.meal} (${e.location}): ${TL[mealColour(e)]}, ${mealPoints(e)} pt${mealPoints(e)===1?'':'s'}`);
     lines.push(`  Portion: ${TL[e.portion]} (${set.portion[e.portion][0]})`);
     lines.push(`  Protein: ${TL[e.protein]} (${set.protein[e.protein][0]})`);
     lines.push(`  Carbs: ${TL[e.carb]} (${set.carb[e.carb][0]})`);
