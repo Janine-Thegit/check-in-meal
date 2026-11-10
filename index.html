@@ -92,6 +92,13 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
 .hc.g{background:var(--green)}.hc.a{background:var(--amber)}.hc.r{background:var(--red)}.hc.n{background:var(--grey)}
 .chip.cal{position:relative;overflow:hidden;display:inline-block}
 .chip.cal input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;font-size:16px}
+.arow{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:10px}
+.an{font-family:'Fraunces',serif;font-size:19px}
+.as{font-size:13px;color:var(--mute)}
+.astep{display:flex;align-items:center;gap:14px}
+.abtn{width:46px;height:46px;border-radius:50%;border:1.5px solid var(--ink);background:transparent;color:var(--ink);font:inherit;font-size:26px;line-height:1;cursor:pointer;touch-action:manipulation}
+.abtn:disabled{opacity:.25;cursor:default}
+.acount{font-family:'Fraunces',serif;font-size:32px;min-width:38px;text-align:center}
 </style>
 </head>
 <body>
@@ -158,6 +165,14 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
   <div class="wticks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5 L</span></div>
   <p class="quiet">Set the total for the day so far. Saving again replaces it.</p>
   <button class="save" id="wSave">Save</button>
+</section>
+
+<section id="s6" class="hidden">
+  <button class="back" id="back6">&lsaquo; Back</button>
+  <p class="ctx" id="actx">Alcohol</p>
+  <div id="alcRows"></div>
+  <p class="quiet">Set the total for the day so far. Saving again replaces it.</p>
+  <button class="save" id="aSave">Save</button>
 </section>
 
 </main>
@@ -235,10 +250,16 @@ function mealColour(e){
 }
 const mealPoints = e => POINTS[kind(e)][mealColour(e)];
 function dayColour(total){ return total <= DAY_GREEN_MAX ? 'g' : total <= DAY_AMBER_MAX ? 'a' : 'r'; }
-const MEALS = ['Breakfast','Lunch','Dinner','Snack','Water'];
+const MEALS = ['Breakfast','Lunch','Dinner','Snack','Water','Alcohol'];
 const WATER_MAX = 5, WATER_STEP = 0.25;   // litres: slider range and step
+const ALC_MAX = 20;                        // most drinks of one kind in a day
+const ALC = [
+  {key:'wine',    label:'Wine',    sub:'125 ml glasses', one:'glass',     many:'glasses',    of:'wine'},
+  {key:'beer',    label:'Beer',    sub:'half pints',     one:'half pint', many:'half pints', of:'beer'},
+  {key:'spirits', label:'Spirits', sub:'shots',          one:'shot',      many:'shots',      of:'spirits'}
+];
 const LOC_DEFAULTS = ['Home','Restaurant','Friends','Family','Work','On the go'];
-const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations', KEY_W='mealCheckin.water';
+const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations', KEY_W='mealCheckin.water', KEY_A='mealCheckin.alcohol';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -253,10 +274,13 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on
 let entries = load(KEY_E, []);
 let water = load(KEY_W, {});            // one running total per day: {'2026-10-07': 2.5}
 if(!water || typeof water!=='object' || Array.isArray(water)) water = {};
+let alcohol = load(KEY_A, {});          // one running total per day: {'2026-11-10': {wine:2, beer:0, spirits:1}}
+if(!alcohol || typeof alcohol!=='object' || Array.isArray(alcohol)) alcohol = {};
 let locs = load(KEY_L, LOC_DEFAULTS.slice());
 let st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};   // date null = today
-let confirmId = null, confirmWater = false;
+let confirmId = null, confirmWater = false, confirmAlc = false;
 let viewDate = localDate(), waterDate = localDate(), waterFrom = 'front';
+let alcDate = localDate(), alcFrom = 'front', alcWork = {wine:0, beer:0, spirits:0};
 
 /* ---------- day data ---------- */
 const isToday = d => d === localDate();
@@ -269,7 +293,15 @@ function sortKey(e){
 }
 const foodOn = d => entries.filter(e => e.date === d).sort((a,b)=>sortKey(a)-sortKey(b));
 const litresOn = d => (typeof water[d]==='number' && water[d]>0) ? water[d] : 0;
-const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0;
+const alcOn = d => {
+  const r = alcohol[d]; if(!r || typeof r!=='object') return null;
+  const o = {}; let t = 0;
+  ALC.forEach(k => { const n = Math.max(0, Math.min(ALC_MAX, parseInt(r[k.key],10) || 0)); o[k.key] = n; t += n; });
+  return t ? o : null;
+};
+const alcTotal = r => r ? ALC.reduce((n,k)=>n+r[k.key],0) : 0;
+const alcText = r => ALC.filter(k => r[k.key]).map(k => `${r[k.key]} ${r[k.key]===1?k.one:k.many} of ${k.of}`);
+const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0 || !!alcOn(d);
 const fmtL = n => n.toLocaleString(undefined,{maximumFractionDigits:2}) + ' L';
 const plural = (n,w) => `${n} ${w}${n===1?'':'s'}`;
 function parseDay(d){ const [y,m,dd]=d.split('-').map(Number); return new Date(y,m-1,dd); }
@@ -285,7 +317,7 @@ function dayStats(d){
 }
 
 /* ---------- screens ---------- */
-function show(id){ ['s1','s2','s3','s4','s5'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
+function show(id){ ['s1','s2','s3','s4','s5','s6'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
 
 function renderDayChips(){
   const t = localDate(), y = addDays(t,-1), d = st.date, other = d && d!==t && d!==y;
@@ -297,12 +329,12 @@ function renderDayChips(){
 }
 function renderS1(){
   renderDayChips();
-  const isWater = st.meal==='Water';
+  const noPlace = st.meal==='Water' || st.meal==='Alcohol';
   $('#mealChips').innerHTML = MEALS.map(m => `<button class="chip${st.meal===m?' sel':''}" data-m="${esc(m)}">${esc(m)}</button>`).join('');
   $('#locChips').innerHTML = locs.map(l => `<button class="chip${st.loc===l?' sel':''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')
     + `<button class="chip add" id="addChip">+ Add</button>`;
-  $('#whereBox').classList.toggle('hidden', isWater);
-  $('#go1').disabled = !(st.meal && (isWater || st.loc));
+  $('#whereBox').classList.toggle('hidden', noPlace);
+  $('#go1').disabled = !(st.meal && (noPlace || st.loc));
   $('#toDay').classList.toggle('hidden', !hasAnyOn(localDate()));
 }
 function renderGroup(box, key){
@@ -342,12 +374,21 @@ function waterCardHtml(d){
     ${confirmWater ? `<div class="confirm">Delete the water entry? <button data-wcancel="1">Cancel</button><button data-wyes="1">Delete</button></div>` : ''}
   </div>`;
 }
+function alcCardHtml(d){
+  const r = alcOn(d); if(!r) return '';
+  return `<div class="entry"><div class="top">Alcohol · ${plural(alcTotal(r),'drink')}</div>
+    <div class="mn">${alcText(r).map(esc).join('<br>')}</div>
+    <button class="link wchange" data-achange="1">Change</button>
+    <button class="x" data-adel="1" aria-label="Delete alcohol entry">&times;</button>
+    ${confirmAlc ? `<div class="confirm">Delete the alcohol entry? <button data-acancel="1">Cancel</button><button data-ayes="1">Delete</button></div>` : ''}
+  </div>`;
+}
 function renderS3(){
   const d = viewDate, today = isToday(d), s = dayStats(d);
   $('#dayTitle').textContent = today ? "Today's meals" : dayLabel(d, true);
   $('#back3').classList.toggle('hidden', today);
   $('#backToday').classList.toggle('hidden', today);
-  $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d);
+  $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d) + alcCardHtml(d);
   $('#list').innerHTML = s.list.length ? s.list.map(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     return `<div class="entry">
@@ -357,17 +398,19 @@ function renderS3(){
       <button class="x" data-del="${e.id}" aria-label="Delete entry">&times;</button>
       ${confirmId===e.id ? `<div class="confirm">Delete this entry? <button data-cancel="1">Cancel</button><button data-yes="${e.id}">Delete</button></div>` : ''}
     </div>`;
-  }).join('') : (s.litres ? '' : `<p class="quiet">Nothing logged ${today ? 'yet today' : 'on this day'}.</p>`);
+  }).join('') : (hasAnyOn(d) ? '' : `<p class="quiet">Nothing logged ${today ? 'yet today' : 'on this day'}.</p>`);
 }
 function renderS4(){
   const days = new Set(entries.map(e => e.date));
   Object.keys(water).forEach(k => { if(litresOn(k)) days.add(k); });
+  Object.keys(alcohol).forEach(k => { if(alcOn(k)) days.add(k); });
   const sorted = [...days].sort().reverse();
   $('#hist').innerHTML = sorted.length ? sorted.map(d => {
     const s = dayStats(d);
     const bits = [];
     if(s.list.length) bits.push(`${plural(s.meals,'meal')}, ${plural(s.snacks,'snack')}`);
     if(s.litres) bits.push(fmtL(s.litres) + ' water');
+    if(alcOn(d)) bits.push(plural(alcTotal(alcOn(d)),'drink'));
     return `<button class="hrow" data-day="${d}">
       <span><span class="hd">${esc(dayLabel(d))}${isToday(d)?' · today':''}</span><span class="hs">${esc(bits.join(' · '))}</span></span>
       <span class="hr"><span class="hp">${s.list.length ? s.total : '–'}</span><i class="hc ${s.colour}"></i></span>
@@ -376,7 +419,7 @@ function renderS4(){
 }
 function resetFlow(){ st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
 function goToday(){
-  viewDate = localDate(); confirmId = null; confirmWater = false;
+  viewDate = localDate(); confirmId = null; confirmWater = confirmAlc = false;
   if(hasAnyOn(viewDate)){ renderS3(); show('s3'); } else { resetFlow(); renderS1(); show('s1'); }
 }
 
@@ -396,10 +439,35 @@ function saveWater(){
   const v = parseFloat($('#wRange').value) || 0;
   if(v > 0) water[waterDate] = v; else delete water[waterDate];
   store(KEY_W, water);
-  resetFlow(); viewDate = waterDate; confirmWater = false; confirmId = null;
+  resetFlow(); viewDate = waterDate; confirmWater = confirmAlc = false; confirmId = null;
   renderS3(); show('s3');
 }
 $('#wRange').addEventListener('input', updWater);
+
+/* ---------- alcohol ---------- */
+function renderS6(){
+  $('#alcRows').innerHTML = ALC.map(k => {
+    const n = alcWork[k.key];
+    return `<div class="arow"><div><div class="an">${k.label}</div><div class="as">${k.sub}</div></div>
+      <div class="astep">
+        <button class="abtn" data-alc="${k.key}" data-dir="-1" ${n<=0?'disabled':''} aria-label="One less ${k.label}">&minus;</button>
+        <span class="acount">${n}</span>
+        <button class="abtn" data-alc="${k.key}" data-dir="1" ${n>=ALC_MAX?'disabled':''} aria-label="One more ${k.label}">+</button>
+      </div></div>`;
+  }).join('');
+}
+function openAlc(d, from){
+  alcDate = d; alcFrom = from;
+  alcWork = Object.assign({wine:0, beer:0, spirits:0}, alcOn(d) || {});
+  $('#actx').textContent = isToday(d) ? 'Alcohol today' : 'Alcohol · ' + dayLabel(d);
+  renderS6(); show('s6');
+}
+function saveAlc(){
+  if(alcTotal(alcWork) > 0) alcohol[alcDate] = Object.assign({}, alcWork); else delete alcohol[alcDate];
+  store(KEY_A, alcohol);
+  resetFlow(); viewDate = alcDate; confirmId = null; confirmWater = confirmAlc = false;
+  renderS3(); show('s3');
+}
 
 /* ---------- events ---------- */
 document.addEventListener('click', ev => {
@@ -412,6 +480,7 @@ document.addEventListener('click', ev => {
   else if(b.id==='addOk'){ addLoc(); }
   else if(b.id==='go1'){
     if(st.meal==='Water'){ openWater(st.date || localDate(), 'front'); }
+    else if(st.meal==='Alcohol'){ openAlc(st.date || localDate(), 'front'); }
     else { st.portion=st.protein=st.carb=st.fat=null; renderS2(); show('s2'); }
   }
   else if(b.id==='back2'){ renderS1(); show('s1'); }
@@ -423,7 +492,7 @@ document.addEventListener('click', ev => {
   else if(b.id==='back3'){ renderS4(); show('s4'); }
   else if(b.id==='back4'){ renderS1(); show('s1'); }
   else if(b.id==='backToday'){ goToday(); }
-  else if(b.dataset.day){ viewDate = b.dataset.day; confirmId = null; confirmWater = false; renderS3(); show('s3'); }
+  else if(b.dataset.day){ viewDate = b.dataset.day; confirmId = null; confirmWater = confirmAlc = false; renderS3(); show('s3'); }
   else if(b.dataset.del){ confirmId = b.dataset.del; renderS3(); }
   else if(b.dataset.cancel){ confirmId = null; renderS3(); }
   else if(b.dataset.yes){ entries = entries.filter(e => e.id !== b.dataset.yes); store(KEY_E, entries); confirmId = null; renderS3(); }
@@ -431,8 +500,15 @@ document.addEventListener('click', ev => {
   else if(b.id==='back5'){ if(waterFrom==='card'){ renderS3(); show('s3'); } else { renderS1(); show('s1'); } }
   else if(b.dataset.wchange){ openWater(viewDate, 'card'); }
   else if(b.dataset.wdel){ confirmWater = true; renderS3(); }
-  else if(b.dataset.wcancel){ confirmWater = false; renderS3(); }
-  else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = false; renderS3(); }
+  else if(b.dataset.wcancel){ confirmWater = confirmAlc = false; renderS3(); }
+  else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = confirmAlc = false; renderS3(); }
+  else if(b.dataset.alc){ const k = b.dataset.alc; alcWork[k] = Math.max(0, Math.min(ALC_MAX, alcWork[k] + parseInt(b.dataset.dir,10))); renderS6(); }
+  else if(b.id==='aSave'){ saveAlc(); }
+  else if(b.id==='back6'){ if(alcFrom==='card'){ renderS3(); show('s3'); } else { renderS1(); show('s1'); } }
+  else if(b.dataset.achange){ openAlc(viewDate, 'card'); }
+  else if(b.dataset.adel){ confirmAlc = true; renderS3(); }
+  else if(b.dataset.acancel){ confirmAlc = false; renderS3(); }
+  else if(b.dataset.ayes){ delete alcohol[viewDate]; store(KEY_A, alcohol); confirmAlc = false; renderS3(); }
   else if(b.id==='copy'){ copyText(); }
 });
 document.addEventListener('change', ev => {
@@ -453,7 +529,7 @@ function saveEntry(){
   entries.push({id:makeId(), date, timestamp:now.toISOString(), late: date !== localDate(now),
     meal:st.meal, location:st.loc, portion:st.portion, protein:st.protein, carb:st.carb, fat:st.fat});
   store(KEY_E, entries);
-  resetFlow(); viewDate = date; confirmId = null; confirmWater = false;
+  resetFlow(); viewDate = date; confirmId = null; confirmWater = confirmAlc = false;
   renderS3(); show('s3');
 }
 function copyText(){
@@ -471,6 +547,7 @@ function copyText(){
   });
   if(s.list.length) lines.push(`Day total: ${s.total} points, ${ {g:'green',a:'amber',r:'red'}[s.colour] } day`);
   if(s.litres) lines.push(`Water: ${fmtL(s.litres)}`);
+  if(alcOn(viewDate)) lines.push(`Alcohol: ${alcText(alcOn(viewDate)).join(', ')}`);
   const text = lines.join('\n').trim();
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
     .then(()=>toast('Copied'), ()=>{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');toast('Copied');}catch(e){} ta.remove(); });
