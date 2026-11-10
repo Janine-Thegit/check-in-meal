@@ -17,7 +17,7 @@
 <style>
 :root{
   --ink:#18140F; --paper:#EFE7DA; --card:#F7F1E6; --line:#D6CABA; --mute:#6E655A;
-  --green:#6B8F5E; --amber:#D9A441; --red:#B5503F; --grey:#A39B8F; --water:#5B7C99;
+  --green:#6B8F5E; --amber:#D9A441; --red:#B5503F; --grey:#A39B8F; --water:#5B7C99; --ex:#8A6F8F;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.45}
@@ -175,6 +175,22 @@ h3{font-family:'Fraunces',serif;font-weight:600;font-size:17px;margin:22px 0 8px
   <button class="save" id="aSave">Save</button>
 </section>
 
+<section id="s7" class="hidden">
+  <button class="back" id="back7">&lsaquo; Back</button>
+  <p class="ctx" id="xctx">Exercise</p>
+  <h2>What did you do?</h2>
+  <div class="chips" id="actChips"></div>
+  <div class="addrow hidden" id="xAddRow">
+    <input id="xAddInput" maxlength="30" placeholder="New activity" autocomplete="off">
+    <button class="link" id="xAddOk">Add</button>
+  </div>
+  <h2>How long?</h2>
+  <div class="wread" id="xRead">0 min</div>
+  <input type="range" class="wrange" id="xRange" min="0" max="180" step="15" value="0" aria-label="Minutes of exercise">
+  <div class="wticks"><span>0</span><span>1 h</span><span>2 h</span><span>3 h</span></div>
+  <button class="save" id="xSave" disabled>Save</button>
+</section>
+
 </main>
 <div class="toast" id="toast"></div>
 
@@ -250,7 +266,7 @@ function mealColour(e){
 }
 const mealPoints = e => POINTS[kind(e)][mealColour(e)];
 function dayColour(total){ return total <= DAY_GREEN_MAX ? 'g' : total <= DAY_AMBER_MAX ? 'a' : 'r'; }
-const MEALS = ['Breakfast','Lunch','Dinner','Snack','Water','Alcohol'];
+const MEALS = ['Breakfast','Lunch','Dinner','Snack','Water','Alcohol','Exercise'];
 const WATER_MAX = 5, WATER_STEP = 0.25;   // litres: slider range and step
 const ALC_MAX = 20;                        // most drinks of one kind in a day
 const ALC = [
@@ -258,8 +274,10 @@ const ALC = [
   {key:'beer',    label:'Beer',    sub:'half pints',     one:'half pint', many:'half pints', of:'beer'},
   {key:'spirits', label:'Spirits', sub:'shots',          one:'shot',      many:'shots',      of:'spirits'}
 ];
+const EX_STEP = 15, EX_MAX = 180;          // minutes: slider step and range
+const ACT_DEFAULTS = ['Yoga','Strength training','Pickleball','Spinning'];
 const LOC_DEFAULTS = ['Home','Restaurant','Friends','Family','Work','On the go'];
-const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations', KEY_W='mealCheckin.water', KEY_A='mealCheckin.alcohol';
+const KEY_E='mealCheckin.entries', KEY_L='mealCheckin.locations', KEY_W='mealCheckin.water', KEY_A='mealCheckin.alcohol', KEY_X='mealCheckin.exercise', KEY_XA='mealCheckin.activities';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -276,9 +294,13 @@ let water = load(KEY_W, {});            // one running total per day: {'2026-10-
 if(!water || typeof water!=='object' || Array.isArray(water)) water = {};
 let alcohol = load(KEY_A, {});          // one running total per day: {'2026-11-10': {wine:2, beer:0, spirits:1}}
 if(!alcohol || typeof alcohol!=='object' || Array.isArray(alcohol)) alcohol = {};
+let exercise = load(KEY_X, []);          // one entry per session: {id, date, activity, minutes, timestamp}
+if(!Array.isArray(exercise)) exercise = [];
+let activities = load(KEY_XA, ACT_DEFAULTS.slice());
+if(!Array.isArray(activities) || !activities.length) activities = ACT_DEFAULTS.slice();
 let locs = load(KEY_L, LOC_DEFAULTS.slice());
-let st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};   // date null = today
-let confirmId = null, confirmWater = false, confirmAlc = false;
+let st = {date:null, act:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null};   // date null = today
+let confirmId = null, confirmWater = false, confirmAlc = false, confirmEx = null;
 let viewDate = localDate(), waterDate = localDate(), waterFrom = 'front';
 let alcDate = localDate(), alcFrom = 'front', alcWork = {wine:0, beer:0, spirits:0};
 
@@ -293,6 +315,9 @@ function sortKey(e){
 }
 const foodOn = d => entries.filter(e => e.date === d).sort((a,b)=>sortKey(a)-sortKey(b));
 const litresOn = d => (typeof water[d]==='number' && water[d]>0) ? water[d] : 0;
+const exOn = d => exercise.filter(e => e && e.date === d).sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp));
+const exMinutes = d => exOn(d).reduce((n,e)=>n+(Number(e.minutes)||0),0);
+function fmtDur(m){ const h = Math.floor(m/60), r = m%60; return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; }
 const alcOn = d => {
   const r = alcohol[d]; if(!r || typeof r!=='object') return null;
   const o = {}; let t = 0;
@@ -301,7 +326,7 @@ const alcOn = d => {
 };
 const alcTotal = r => r ? ALC.reduce((n,k)=>n+r[k.key],0) : 0;
 const alcText = r => ALC.filter(k => r[k.key]).map(k => `${r[k.key]} ${r[k.key]===1?k.one:k.many} of ${k.of}`);
-const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0 || !!alcOn(d);
+const hasAnyOn = d => foodOn(d).length>0 || litresOn(d)>0 || !!alcOn(d) || exOn(d).length>0;
 const fmtL = n => n.toLocaleString(undefined,{maximumFractionDigits:2}) + ' L';
 const plural = (n,w) => `${n} ${w}${n===1?'':'s'}`;
 function parseDay(d){ const [y,m,dd]=d.split('-').map(Number); return new Date(y,m-1,dd); }
@@ -317,7 +342,7 @@ function dayStats(d){
 }
 
 /* ---------- screens ---------- */
-function show(id){ ['s1','s2','s3','s4','s5','s6'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
+function show(id){ ['s1','s2','s3','s4','s5','s6','s7'].forEach(s => $('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); }
 
 function renderDayChips(){
   const t = localDate(), y = addDays(t,-1), d = st.date, other = d && d!==t && d!==y;
@@ -329,7 +354,7 @@ function renderDayChips(){
 }
 function renderS1(){
   renderDayChips();
-  const noPlace = st.meal==='Water' || st.meal==='Alcohol';
+  const noPlace = st.meal==='Water' || st.meal==='Alcohol' || st.meal==='Exercise';
   $('#mealChips').innerHTML = MEALS.map(m => `<button class="chip${st.meal===m?' sel':''}" data-m="${esc(m)}">${esc(m)}</button>`).join('');
   $('#locChips').innerHTML = locs.map(l => `<button class="chip${st.loc===l?' sel':''}" data-l="${esc(l)}">${esc(l)}</button>`).join('')
     + `<button class="chip add" id="addChip">+ Add</button>`;
@@ -374,6 +399,13 @@ function waterCardHtml(d){
     ${confirmWater ? `<div class="confirm">Delete the water entry? <button data-wcancel="1">Cancel</button><button data-wyes="1">Delete</button></div>` : ''}
   </div>`;
 }
+function exCardsHtml(d){
+  return exOn(d).map(e => `<div class="entry"><div class="top">Exercise</div>
+    <div class="mn">${esc(e.activity)}<span class="badge">${esc(fmtDur(Number(e.minutes)||0))}</span></div>
+    <button class="x" data-xdel="${esc(e.id)}" aria-label="Delete exercise entry">&times;</button>
+    ${confirmEx===e.id ? `<div class="confirm">Delete this exercise? <button data-xcancel="1">Cancel</button><button data-xyes="${esc(e.id)}">Delete</button></div>` : ''}
+  </div>`).join('');
+}
 function alcCardHtml(d){
   const r = alcOn(d); if(!r) return '';
   return `<div class="entry"><div class="top">Alcohol · ${plural(alcTotal(r),'drink')}</div>
@@ -388,7 +420,7 @@ function renderS3(){
   $('#dayTitle').textContent = today ? "Today's meals" : dayLabel(d, true);
   $('#back3').classList.toggle('hidden', today);
   $('#backToday').classList.toggle('hidden', today);
-  $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d) + alcCardHtml(d);
+  $('#summary').innerHTML = summaryHtml(s) + waterCardHtml(d) + exCardsHtml(d) + alcCardHtml(d);
   $('#list').innerHTML = s.list.length ? s.list.map(e => {
     const t = new Date(e.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     return `<div class="entry">
@@ -404,12 +436,14 @@ function renderS4(){
   const days = new Set(entries.map(e => e.date));
   Object.keys(water).forEach(k => { if(litresOn(k)) days.add(k); });
   Object.keys(alcohol).forEach(k => { if(alcOn(k)) days.add(k); });
+  exercise.forEach(e => { if(e && e.date) days.add(e.date); });
   const sorted = [...days].sort().reverse();
   $('#hist').innerHTML = sorted.length ? sorted.map(d => {
     const s = dayStats(d);
     const bits = [];
     if(s.list.length) bits.push(`${plural(s.meals,'meal')}, ${plural(s.snacks,'snack')}`);
     if(s.litres) bits.push(fmtL(s.litres) + ' water');
+    if(exMinutes(d)) bits.push(fmtDur(exMinutes(d)) + ' exercise');
     if(alcOn(d)) bits.push(plural(alcTotal(alcOn(d)),'drink'));
     return `<button class="hrow" data-day="${d}">
       <span><span class="hd">${esc(dayLabel(d))}${isToday(d)?' · today':''}</span><span class="hs">${esc(bits.join(' · '))}</span></span>
@@ -417,9 +451,9 @@ function renderS4(){
     </button>`;
   }).join('') : `<p class="quiet">Nothing logged yet.</p>`;
 }
-function resetFlow(){ st = {date:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
+function resetFlow(){ st = {date:null, act:null, meal:null, loc:null, portion:null, protein:null, carb:null, fat:null}; }
 function goToday(){
-  viewDate = localDate(); confirmId = null; confirmWater = confirmAlc = false;
+  viewDate = localDate(); confirmId = null; confirmWater = confirmAlc = false; confirmEx = null;
   if(hasAnyOn(viewDate)){ renderS3(); show('s3'); } else { resetFlow(); renderS1(); show('s1'); }
 }
 
@@ -439,7 +473,7 @@ function saveWater(){
   const v = parseFloat($('#wRange').value) || 0;
   if(v > 0) water[waterDate] = v; else delete water[waterDate];
   store(KEY_W, water);
-  resetFlow(); viewDate = waterDate; confirmWater = confirmAlc = false; confirmId = null;
+  resetFlow(); viewDate = waterDate; confirmWater = confirmAlc = false; confirmEx = null; confirmId = null;
   renderS3(); show('s3');
 }
 $('#wRange').addEventListener('input', updWater);
@@ -465,9 +499,46 @@ function openAlc(d, from){
 function saveAlc(){
   if(alcTotal(alcWork) > 0) alcohol[alcDate] = Object.assign({}, alcWork); else delete alcohol[alcDate];
   store(KEY_A, alcohol);
-  resetFlow(); viewDate = alcDate; confirmId = null; confirmWater = confirmAlc = false;
+  resetFlow(); viewDate = alcDate; confirmId = null; confirmWater = confirmAlc = false; confirmEx = null;
   renderS3(); show('s3');
 }
+
+/* ---------- exercise ---------- */
+function updEx(){
+  const r = $('#xRange'), v = parseInt(r.value,10) || 0, pct = v/EX_MAX*100;
+  $('#xRead').textContent = fmtDur(v);
+  r.style.background = `linear-gradient(to right, var(--ex) ${pct}%, var(--line) ${pct}%)`;
+  $('#xSave').disabled = !(st.act && v > 0);
+}
+function renderS7(){
+  $('#actChips').innerHTML = activities.map(a => `<button class="chip${st.act===a?' sel':''}" data-act="${esc(a)}">${esc(a)}</button>`).join('')
+    + `<button class="chip add" id="xAddChip">+ Add</button>`;
+  updEx();
+}
+function openEx(){
+  const d = st.date || localDate();
+  st.act = null;
+  const r = $('#xRange'); r.min = 0; r.max = EX_MAX; r.step = EX_STEP; r.value = 0;
+  $('#xctx').textContent = isToday(d) ? 'Exercise today' : 'Exercise · ' + dayLabel(d);
+  $('#xAddRow').classList.add('hidden');
+  renderS7(); show('s7');
+}
+function addAct(){
+  const v = $('#xAddInput').value.trim(); if(!v) return;
+  const hit = activities.find(a => a.toLowerCase()===v.toLowerCase());
+  if(!hit){ activities.push(v); store(KEY_XA, activities); }
+  st.act = hit || v; $('#xAddInput').value = ''; $('#xAddRow').classList.add('hidden'); renderS7();
+}
+function saveEx(){
+  const v = parseInt($('#xRange').value,10) || 0; if(!st.act || v <= 0) return;
+  const now = new Date(), date = st.date || localDate(now);
+  exercise.push({id:makeId(), date, activity:st.act, minutes:v, timestamp:now.toISOString()});
+  store(KEY_X, exercise);
+  resetFlow(); viewDate = date; confirmId = null; confirmWater = confirmAlc = false; confirmEx = null;
+  renderS3(); show('s3');
+}
+$('#xRange').addEventListener('input', updEx);
+$('#xAddInput').addEventListener('keydown', e => { if(e.key==='Enter') addAct(); });
 
 /* ---------- events ---------- */
 document.addEventListener('click', ev => {
@@ -481,6 +552,7 @@ document.addEventListener('click', ev => {
   else if(b.id==='go1'){
     if(st.meal==='Water'){ openWater(st.date || localDate(), 'front'); }
     else if(st.meal==='Alcohol'){ openAlc(st.date || localDate(), 'front'); }
+    else if(st.meal==='Exercise'){ openEx(); }
     else { st.portion=st.protein=st.carb=st.fat=null; renderS2(); show('s2'); }
   }
   else if(b.id==='back2'){ renderS1(); show('s1'); }
@@ -492,7 +564,7 @@ document.addEventListener('click', ev => {
   else if(b.id==='back3'){ renderS4(); show('s4'); }
   else if(b.id==='back4'){ renderS1(); show('s1'); }
   else if(b.id==='backToday'){ goToday(); }
-  else if(b.dataset.day){ viewDate = b.dataset.day; confirmId = null; confirmWater = confirmAlc = false; renderS3(); show('s3'); }
+  else if(b.dataset.day){ viewDate = b.dataset.day; confirmId = null; confirmWater = confirmAlc = false; confirmEx = null; renderS3(); show('s3'); }
   else if(b.dataset.del){ confirmId = b.dataset.del; renderS3(); }
   else if(b.dataset.cancel){ confirmId = null; renderS3(); }
   else if(b.dataset.yes){ entries = entries.filter(e => e.id !== b.dataset.yes); store(KEY_E, entries); confirmId = null; renderS3(); }
@@ -500,8 +572,16 @@ document.addEventListener('click', ev => {
   else if(b.id==='back5'){ if(waterFrom==='card'){ renderS3(); show('s3'); } else { renderS1(); show('s1'); } }
   else if(b.dataset.wchange){ openWater(viewDate, 'card'); }
   else if(b.dataset.wdel){ confirmWater = true; renderS3(); }
-  else if(b.dataset.wcancel){ confirmWater = confirmAlc = false; renderS3(); }
-  else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = confirmAlc = false; renderS3(); }
+  else if(b.dataset.wcancel){ confirmWater = confirmAlc = false; confirmEx = null; renderS3(); }
+  else if(b.dataset.wyes){ delete water[viewDate]; store(KEY_W, water); confirmWater = confirmAlc = false; confirmEx = null; renderS3(); }
+  else if(b.dataset.act){ st.act = b.dataset.act; renderS7(); }
+  else if(b.id==='xAddChip'){ $('#xAddRow').classList.remove('hidden'); $('#xAddInput').focus(); }
+  else if(b.id==='xAddOk'){ addAct(); }
+  else if(b.id==='xSave'){ saveEx(); }
+  else if(b.id==='back7'){ renderS1(); show('s1'); }
+  else if(b.dataset.xdel){ confirmEx = b.dataset.xdel; renderS3(); }
+  else if(b.dataset.xcancel){ confirmEx = null; renderS3(); }
+  else if(b.dataset.xyes){ exercise = exercise.filter(e => e.id !== b.dataset.xyes); store(KEY_X, exercise); confirmEx = null; renderS3(); }
   else if(b.dataset.alc){ const k = b.dataset.alc; alcWork[k] = Math.max(0, Math.min(ALC_MAX, alcWork[k] + parseInt(b.dataset.dir,10))); renderS6(); }
   else if(b.id==='aSave'){ saveAlc(); }
   else if(b.id==='back6'){ if(alcFrom==='card'){ renderS3(); show('s3'); } else { renderS1(); show('s1'); } }
@@ -529,7 +609,7 @@ function saveEntry(){
   entries.push({id:makeId(), date, timestamp:now.toISOString(), late: date !== localDate(now),
     meal:st.meal, location:st.loc, portion:st.portion, protein:st.protein, carb:st.carb, fat:st.fat});
   store(KEY_E, entries);
-  resetFlow(); viewDate = date; confirmId = null; confirmWater = confirmAlc = false;
+  resetFlow(); viewDate = date; confirmId = null; confirmWater = confirmAlc = false; confirmEx = null;
   renderS3(); show('s3');
 }
 function copyText(){
@@ -548,6 +628,7 @@ function copyText(){
   if(s.list.length) lines.push(`Day total: ${s.total} points, ${ {g:'green',a:'amber',r:'red'}[s.colour] } day`);
   if(s.litres) lines.push(`Water: ${fmtL(s.litres)}`);
   if(alcOn(viewDate)) lines.push(`Alcohol: ${alcText(alcOn(viewDate)).join(', ')}`);
+  if(exOn(viewDate).length) lines.push(`Exercise: ${exOn(viewDate).map(e => e.activity + ' ' + fmtDur(Number(e.minutes)||0)).join(', ')}`);
   const text = lines.join('\n').trim();
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
     .then(()=>toast('Copied'), ()=>{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');toast('Copied');}catch(e){} ta.remove(); });
